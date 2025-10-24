@@ -1,0 +1,2 @@
+# UwscKbdConverter
+UWSCというツールを利用して自動入力を行うための支援ツール。
