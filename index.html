@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>UWSC KBD スクリプト生成</title>
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css" />
+    <style>
+        body {
+            background: #f5f7fa;
+        }
+
+        textarea {
+            font-family: Consolas, Menlo, monospace;
+        }
+
+        pre {
+            background: #272822;
+            color: #eee;
+            padding: 1rem;
+            border-radius: 4px;
+            white-space: pre-wrap;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container py-3">
+        <h1 class="h4">UWSC キーボード入力スクリプト生成ツール</h1>
+        <p class="text-muted">任意のテキスト (SQL 等) から <code>KBD(...)</code> 形式の UWSC スクリプトを生成します。</p>
+
+        <div class="form-group">
+            <label for="srcText">入力テキスト</label>
+            <textarea id="srcText" class="form-control" rows="10" placeholder="ここにSQLや文章を貼り付け"></textarea>
+        </div>
+
+        <div class="form-row">
+            <div class="form-group col-md-3">
+                <label for="interval">キー間インターバル (ms)</label>
+                <input type="number" id="interval" class="form-control" value="10" min="0" />
+            </div>
+            <div class="form-group col-md-3">
+                <label for="intervalShift">Shift押下保持 (ms) ※入力切替用</label>
+                <input type="number" id="intervalShift" class="form-control" value="20" min="0" />
+            </div>
+            <div class="form-group col-md-3">
+                <label for="sleepSeconds">開始前 Sleep(s)</label>
+                <input type="number" id="sleepSeconds" class="form-control" value="5" min="0" />
+            </div>
+            <div class="form-group col-md-3">
+                <label for="fileName">ファイル名 (*.uws)</label>
+                <input type="text" id="fileName" class="form-control" value="uwsc_kbd_output.uws" />
+            </div>
+        </div>
+
+        <div class="form-group">
+            <button id="convertBtn" class="btn btn-primary">変換</button>
+            <button id="copyBtn" class="btn btn-success ml-2" disabled>コピー</button>
+            <button id="downloadBtn" class="btn btn-secondary ml-2" disabled>ダウンロード</button>
+        </div>
+
+        <h5>生成結果</h5>
+        <pre id="output"></pre>
+        <div id="alertBox" class="mt-3"></div>
+
+        <hr />
+        <p class="small text-muted mb-0">未対応文字は <code>// 未対応: '文字'</code> として出力されます。必要に応じてマッピングを拡張してください。</p>
+    </div>
+
+    <script>
+        function toUwscKbdCommands(text, interval, intervalShift) {
+            const vkMap = {
+                '\n': 'VK_RETURN',
+                ' ': 'VK_SPACE',
+                ',': 'VK_OEM_COMMA',
+                '.': 'VK_OEM_PERIOD',
+                '_': 'VK_OEM_MINUS',
+                '*': 'VK_MULTIPLY',
+                ';': 'VK_OEM_PLUS',
+                ':': 'VK_OEM_1',
+                '"': 'VK_OEM_7',
+                '-': 'VK_OEM_MINUS',
+                '/': 'VK_OEM_2',
+                '\\': 'VK_OEM_5'
+            };
+
+            const lines = [];
+            for (const ch of text) {
+                if (ch === '\n') {
+                    lines.push(`KBD(VK_RETURN, CLICK, ${interval})`);
+                } else if (ch === ' ') {
+                    lines.push(`KBD(VK_SPACE, CLICK, ${interval})`);
+                } else if (ch === "'") {
+                    lines.push(`KBD(VK_SHIFT, DOWN, ${intervalShift})`);
+                    lines.push(`KBD(VK_7,CLICK, ${interval})`);
+                    lines.push(`KBD(VK_SHIFT, UP, ${interval})`);
+                } else if (ch === '_') { // 実装通り VK_OEM_102 を押下 -> 環境依存のため注意
+                    lines.push(`KBD(VK_SHIFT, DOWN, ${intervalShift})`);
+                    lines.push(`KBD(VK_OEM_102,CLICK, ${interval})`);
+                    lines.push(`KBD(VK_SHIFT, UP, ${interval})`);
+                } else if (ch === '(') {
+                    lines.push(`KBD(VK_SHIFT, DOWN, ${intervalShift})`);
+                    lines.push(`KBD(VK_8,CLICK, ${interval})`);
+                    lines.push(`KBD(VK_SHIFT, UP, ${interval})`);
+                } else if (ch === ')') {
+                    lines.push(`KBD(VK_SHIFT, DOWN, ${intervalShift})`);
+                    lines.push(`KBD(VK_9,CLICK, ${interval})`);
+                    lines.push(`KBD(VK_SHIFT, UP, ${interval})`);
+                } else if (ch === '=') {
+                    lines.push(`KBD(VK_SHIFT, DOWN, ${intervalShift})`);
+                    lines.push(`KBD(VK_OEM_MINUS,CLICK, ${interval})`);
+                    lines.push(`KBD(VK_SHIFT, UP, ${interval})`);
+                } else if (ch === ">") {
+                    lines.push(`KBD(VK_SHIFT, DOWN, ${intervalShift})`);
+                    lines.push(`KBD(VK_OEM_PERIOD,CLICK, ${interval})`);
+                    lines.push(`KBD(VK_SHIFT, UP, ${interval})`);
+                } else if (ch === "<") {
+                    lines.push(`KBD(VK_SHIFT, DOWN, ${intervalShift})`);
+                    lines.push(`KBD(VK_OEM_COMMA,CLICK, ${interval})`);
+                    lines.push(`KBD(VK_SHIFT, UP, ${interval})`);
+                } else if (/^[a-zA-Z]$/.test(ch)) {
+                    lines.push(`KBD(VK_${ch.toUpperCase()}, CLICK, ${interval})`);
+                } else if (/^[0-9]$/.test(ch)) {
+                    lines.push(`KBD(VK_${ch}, CLICK, ${interval})`);
+                } else if (vkMap[ch]) {
+                    lines.push(`KBD(${vkMap[ch]}, CLICK, ${interval})`);
+                } else {
+                    lines.push(`// 未対応: ${JSON.stringify(ch)}`);
+                }
+            }
+            return lines.join('\n');
+        }
+
+        function buildScript(raw, sleepSeconds, interval, intervalShift) {
+            return `Sleep(${sleepSeconds})\n` + toUwscKbdCommands(raw, interval, intervalShift) + '\n';
+        }
+
+        function showAlert(msg, type = 'info') {
+            const box = document.getElementById('alertBox');
+            box.className = `alert alert-${type}`;
+            box.textContent = msg;
+        }
+
+        document.getElementById('convertBtn').addEventListener('click', () => {
+            const raw = document.getElementById('srcText').value || '';
+            const interval = parseInt(document.getElementById('interval').value, 10) || 0;
+            const intervalShift = parseInt(document.getElementById('intervalShift').value, 10) || 0;
+            const sleepSeconds = parseInt(document.getElementById('sleepSeconds').value, 10) || 0;
+            if (!raw) { showAlert('入力テキストを入力してください。', 'warning'); return; }
+            const script = buildScript(raw, sleepSeconds, interval, intervalShift);
+            document.getElementById('output').textContent = script;
+            document.getElementById('copyBtn').disabled = false;
+            document.getElementById('downloadBtn').disabled = false;
+            showAlert('生成しました。', 'success');
+        });
+
+        document.getElementById('copyBtn').addEventListener('click', () => {
+            const script = document.getElementById('output').textContent;
+            if (!script) return;
+            navigator.clipboard.writeText(script).then(() => showAlert('コピーしました。', 'success'))
+                .catch(() => showAlert('コピーに失敗しました。', 'danger'));
+        });
+
+        document.getElementById('downloadBtn').addEventListener('click', () => {
+            const script = document.getElementById('output').textContent;
+            if (!script) return;
+            let fileName = document.getElementById('fileName').value.trim() || 'uwsc_kbd_output.uws';
+            if (!fileName.endsWith('.uws')) fileName += '.uws';
+            const blob = new Blob([script], { type: 'text/plain' });
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = fileName;
+            document.body.appendChild(a);
+            a.click();
+            setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 100);
+            showAlert('ダウンロードしました。', 'success');
+        });
+    </script>
+</body>
+
+</html>
